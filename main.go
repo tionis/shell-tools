@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"filippo.io/age"
 	"fmt"
@@ -10,9 +12,17 @@ import (
 	"golang.design/x/clipboard"
 	"io"
 	"log"
+	"mvdan.cc/sh/v3/expand"
+	"mvdan.cc/sh/v3/interp"
+	"mvdan.cc/sh/v3/syntax"
 	"os"
 	"strings"
 )
+
+type quickCommand struct {
+	Description string `json:"description"`
+	Command     string `json:"command"`
+}
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
@@ -64,6 +74,64 @@ func main() {
 				},
 			},
 			{
+				Name:    "quick",
+				Aliases: []string{"q"},
+				Flags: []cli.Flag{
+					&cli.PathFlag{
+						Name:      "file",
+						Aliases:   []string{"f"},
+						Usage:     "file to read from",
+						TakesFile: true,
+					},
+				},
+				Usage: "quick-commands, small ui to quickly execute some commands\n" +
+					"reads json config from stdin (or file) with the keys as command" +
+					" names and the values as a tuple of description and command",
+				Action: func(c *cli.Context) error {
+					var all []byte
+					var err error
+					if c.String("file") != "" {
+						all, err = os.ReadFile(c.String("file"))
+						if err != nil {
+							return fmt.Errorf("failed to read file: %w", err)
+						}
+					} else {
+						all, err = io.ReadAll(os.Stdin)
+						if err != nil {
+							return fmt.Errorf("failed to read stdin: %w", err)
+						}
+					}
+					var quickConfig map[string]quickCommand
+					err = json.Unmarshal(all, &quickConfig)
+					if err != nil {
+						return fmt.Errorf("failed to unmarshal json: %w", err)
+					}
+					commandKeys := keys(quickConfig)
+					selected, err := fuzzyfinder.Find(commandKeys, func(i int) string {
+						return commandKeys[i]
+					}, fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
+						return quickConfig[commandKeys[i]].Description
+					}))
+					if err != nil {
+						if err == fuzzyfinder.ErrAbort {
+							return nil
+						}
+						return fmt.Errorf("failed to find command: %w", err)
+					}
+					quickCommand := quickConfig[commandKeys[selected]]
+					file, _ := syntax.NewParser().Parse(strings.NewReader(quickCommand.Command), commandKeys[selected])
+					runner, _ := interp.New(
+						interp.Env(expand.ListEnviron(os.Environ()...)),
+						interp.StdIO(nil, os.Stdout, os.Stdout),
+					)
+					err = runner.Run(context.TODO(), file)
+					if err != nil {
+						return fmt.Errorf("failed to run command: %w", err)
+					}
+					return nil
+				},
+			},
+			{
 				Name:    "pass",
 				Aliases: []string{"p"},
 				Usage:   "password manager",
@@ -88,7 +156,7 @@ func main() {
 							defer file.Close()
 							idReader := strings.NewReader("AGE-PLUGIN-YUBIKEY-1JAAZ6QVZ0RQLA0GD5ZEPL\n" +
 								"AGE-PLUGIN-YUBIKEY-1ZJRRUQVZE9DJFCC3UPNJD\n" +
-								"AGE-PLUGIN-YUBIKEY-1ZWRRUQVZAJX2Q4C5LJRTD")
+								"AGE-PLUGIN-YUBIKEY-1ZWRRUQVZAJX2Q4C5LJRTD") // TODO load identities from file
 							identities, err := age.ParseIdentities(idReader)
 							if err != nil {
 								return err
@@ -225,4 +293,14 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatalf("failed to run app: %v+", err)
 	}
+}
+
+func keys(m map[string]quickCommand) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	return keys
 }
