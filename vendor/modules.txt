@@ -7,6 +7,9 @@ filippo.io/age/internal/stream
 # github.com/cpuguy83/go-md2man/v2 v2.0.2
 ## explicit; go 1.11
 github.com/cpuguy83/go-md2man/v2/md2man
+# github.com/fsnotify/fsnotify v1.6.0
+## explicit; go 1.16
+github.com/fsnotify/fsnotify
 # github.com/gdamore/encoding v1.0.0
 ## explicit; go 1.9
 github.com/gdamore/encoding
@@ -152,5 +155,4 @@ mvdan.cc/sh/v3/expand
 mvdan.cc/sh/v3/fileutil
 mvdan.cc/sh/v3/interp
 mvdan.cc/sh/v3/pattern
-mvdan.cc/sh/v3/shell
 mvdan.cc/sh/v3/syntax

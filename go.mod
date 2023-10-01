@@ -4,6 +4,7 @@ go 1.21.1
 
 require (
 	filippo.io/age v1.1.1
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/google/uuid v1.3.1
 	github.com/ktr0731/go-fuzzyfinder v0.7.0
 	github.com/urfave/cli/v2 v2.25.7

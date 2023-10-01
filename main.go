@@ -6,6 +6,7 @@ import (
 	"errors"
 	"filippo.io/age"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/urfave/cli/v2"
@@ -16,6 +17,7 @@ import (
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -40,6 +42,83 @@ func main() {
 
 	app := &cli.App{
 		Commands: []*cli.Command{
+			{
+				Name:  "entr",
+				Usage: "file watcher that executes a command on changes",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:    "path",
+						Aliases: []string{"p"},
+						Usage:   "a path to watch non-recursively",
+					},
+					&cli.StringFlag{
+						Name:  "this",
+						Usage: "just watch working dir, nothing else",
+					},
+					&cli.StringSliceFlag{
+						Name:    "recursive",
+						Aliases: []string{"r"},
+						Usage:   "a path to watch recursively",
+					},
+				},
+				UsageText: "entr [global options] command args",
+				Action: func(c *cli.Context) error {
+					watcher, err := fsnotify.NewWatcher()
+					if err != nil {
+						return fmt.Errorf("failed to create watcher: %w", err)
+					}
+					if c.String("this") != "" {
+						for _, dir := range c.StringSlice("dir") {
+							log.Printf("watching dir: %s\n", dir)
+							err = watcher.Add(dir)
+							if err != nil {
+								return fmt.Errorf("failed to add dir to watcher: %w", err)
+							}
+						}
+						for _, dir := range c.StringSlice("path") {
+							log.Printf("watching path: %s\n", dir)
+							// TODO watch recursively
+							// this needs some plumping to work
+							// needs to track watched paths and update that list on changes if necessary
+							err = errors.New("recursive not implemented")
+							if err != nil {
+								return fmt.Errorf("failed to add path to watcher: %w", err)
+							}
+						}
+					} else {
+						workingDir, err := os.Getwd()
+						if err != nil {
+							return fmt.Errorf("failed to get working dir: %w", err)
+						}
+						log.Printf("watching working dir (%s)\n", workingDir)
+						// TODO watch recursively
+						err = watcher.Add(workingDir)
+						if err != nil {
+							return fmt.Errorf("failed to add dir to watcher: %w", err)
+						}
+					}
+					command := c.Args().Slice()
+					for {
+						select {
+						case event, ok := <-watcher.Events:
+							if !ok {
+								return errors.New("watcher closed")
+							}
+							// TODO implement cooldown period?
+							log.Printf("event: %s\n", event.String())
+							err := exec.Command(command[0], command[1:]...).Run()
+							if err != nil {
+								return err
+							}
+						case err, ok := <-watcher.Errors:
+							if !ok {
+								return errors.New("watcher closed")
+							}
+							log.Println("error:", err)
+						}
+					}
+				},
+			},
 			{
 				Name:    "clipboard",
 				Aliases: []string{"clip"},
@@ -153,7 +232,12 @@ func main() {
 							if err != nil {
 								return err
 							}
-							defer file.Close()
+							defer func(file *os.File) {
+								err := file.Close()
+								if err != nil {
+									log.Printf("failed to close file: %v+", err)
+								}
+							}(file)
 							idReader := strings.NewReader("AGE-PLUGIN-YUBIKEY-1JAAZ6QVZ0RQLA0GD5ZEPL\n" +
 								"AGE-PLUGIN-YUBIKEY-1ZJRRUQVZE9DJFCC3UPNJD\n" +
 								"AGE-PLUGIN-YUBIKEY-1ZWRRUQVZAJX2Q4C5LJRTD") // TODO load identities from file
@@ -285,6 +369,21 @@ func main() {
 							return errors.New("not implemented")
 						},
 					},
+					// TODO add following commands:
+					// - base64
+					// - ifne
+					// - git-root
+					// - git-skm
+					// - git interactive sparse clone
+					// - git interactive sparse checkout
+					// - combine
+					// - chronic
+					// - sponge
+					// - gron and other json processing tools
+					// - ssh-proxy (for huproxy)
+					// - ts
+					// - xargs like
+					// - vidir
 				},
 			},
 		},
