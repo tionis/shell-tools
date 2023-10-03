@@ -7,6 +7,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/google/uuid v1.3.1
 	github.com/ktr0731/go-fuzzyfinder v0.7.0
+	github.com/rjeczalik/notify v0.9.3
 	github.com/urfave/cli/v2 v2.25.7
 	golang.design/x/clipboard v0.7.0
 	mvdan.cc/sh/v3 v3.7.0

@@ -6,13 +6,14 @@ import (
 	"errors"
 	"filippo.io/age"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/ktr0731/go-fuzzyfinder"
+	"github.com/rjeczalik/notify"
 	"github.com/urfave/cli/v2"
 	"golang.design/x/clipboard"
 	"io"
 	"log"
+	"log/slog"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
@@ -28,6 +29,7 @@ type quickCommand struct {
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	var logger *slog.Logger
 
 	//homeDir, err := os.UserHomeDir()
 	//if err != nil {
@@ -41,6 +43,32 @@ func main() {
 	//}
 
 	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "log-level",
+				Aliases: []string{"ll"},
+				Usage:   "log level to use",
+				Value:   "info",
+			},
+		},
+		Before: func(c *cli.Context) error {
+			logLevel, err := parseLogLevel(c.String("log-level"))
+			if err != nil {
+				return fmt.Errorf("failed to parse log level: %w", err)
+			}
+			addSource := false
+			if logLevel == slog.LevelDebug {
+				addSource = true
+			}
+			logger = slog.New(
+				slog.NewTextHandler(
+					os.Stdout,
+					&slog.HandlerOptions{
+						AddSource: addSource,
+						Level:     logLevel,
+					}))
+			return nil
+		},
 		Commands: []*cli.Command{
 			{
 				Name:  "entr",
@@ -63,23 +91,18 @@ func main() {
 				},
 				UsageText: "entr [global options] command args",
 				Action: func(c *cli.Context) error {
-					watcher, err := fsnotify.NewWatcher()
-					if err != nil {
-						return fmt.Errorf("failed to create watcher: %w", err)
-					}
+					var err error
+					events := make(chan notify.EventInfo, 10)
 					if c.String("this") != "" {
 						for _, dir := range c.StringSlice("dir") {
-							log.Printf("watching dir: %s\n", dir)
-							err = watcher.Add(dir)
+							err = notify.Watch(dir, events, notify.All)
 							if err != nil {
 								return fmt.Errorf("failed to add dir to watcher: %w", err)
 							}
 						}
 						for _, dir := range c.StringSlice("path") {
-							log.Printf("watching path: %s\n", dir)
-							// TODO watch recursively
-							// this needs some plumping to work
-							// needs to track watched paths and update that list on changes if necessary
+							logger.Info("watching path: %s\n", dir)
+							err = notify.Watch(dir, events, notify.All)
 							err = errors.New("recursive not implemented")
 							if err != nil {
 								return fmt.Errorf("failed to add path to watcher: %w", err)
@@ -90,9 +113,8 @@ func main() {
 						if err != nil {
 							return fmt.Errorf("failed to get working dir: %w", err)
 						}
-						log.Printf("watching working dir (%s)\n", workingDir)
-						// TODO watch recursively
-						err = watcher.Add(workingDir)
+						logger.Info("watching working dir (%s)\n", workingDir)
+						err = notify.Watch(workingDir, events, notify.All)
 						if err != nil {
 							return fmt.Errorf("failed to add dir to watcher: %w", err)
 						}
@@ -100,21 +122,16 @@ func main() {
 					command := c.Args().Slice()
 					for {
 						select {
-						case event, ok := <-watcher.Events:
+						case event, ok := <-events:
 							if !ok {
 								return errors.New("watcher closed")
 							}
 							// TODO implement cooldown period?
-							log.Printf("event: %s\n", event.String())
+							logger.Info("new event", "path", event.Path(), "event", event.Event().String())
 							err := exec.Command(command[0], command[1:]...).Run()
 							if err != nil {
 								return err
 							}
-						case err, ok := <-watcher.Errors:
-							if !ok {
-								return errors.New("watcher closed")
-							}
-							log.Println("error:", err)
 						}
 					}
 				},
@@ -235,7 +252,7 @@ func main() {
 							defer func(file *os.File) {
 								err := file.Close()
 								if err != nil {
-									log.Printf("failed to close file: %v+", err)
+									logger.Info("failed to close file: %v+", err)
 								}
 							}(file)
 							idReader := strings.NewReader("AGE-PLUGIN-YUBIKEY-1JAAZ6QVZ0RQLA0GD5ZEPL\n" +
@@ -402,4 +419,19 @@ func keys(m map[string]quickCommand) []string {
 		i++
 	}
 	return keys
+}
+
+func parseLogLevel(logLevel string) (slog.Level, error) {
+	switch logLevel {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("invalid log level: %s", logLevel)
+	}
 }
