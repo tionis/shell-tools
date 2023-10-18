@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"tasadar.net/tionis/shell-tools/convert"
 )
 
 type quickCommand struct {
@@ -70,6 +71,35 @@ func main() {
 			return nil
 		},
 		Commands: []*cli.Command{
+			{
+				Name:      "convert",
+				Aliases:   []string{"c"},
+				Usage:     "convert between formats",
+				UsageText: "convert from to\n",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:    "from-args",
+						Aliases: []string{"fa"},
+						Usage:   "arguments for the from format",
+					},
+					&cli.StringSliceFlag{
+						Name:    "to-args",
+						Aliases: []string{"ta"},
+						Usage:   "arguments for the to format",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					if c.Args().Len() != 2 {
+						return errors.New("invalid number of arguments")
+					}
+					return convert.Convert(
+						c.Args().Get(0),
+						c.StringSlice("from-args"),
+						c.Args().Get(1),
+						c.StringSlice("to-args"),
+						os.Stdin, os.Stdout)
+				},
+			},
 			{
 				Name:  "entr",
 				Usage: "file watcher that executes a command on changes",
