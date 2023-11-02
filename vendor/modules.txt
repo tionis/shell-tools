@@ -130,7 +130,7 @@ golang.org/x/exp/shiny/driver/internal/lifecycler
 golang.org/x/exp/shiny/driver/internal/win32
 golang.org/x/exp/shiny/driver/internal/x11key
 golang.org/x/exp/shiny/screen
-# golang.org/x/image v0.6.0
+# golang.org/x/image v0.10.0
 ## explicit; go 1.12
 golang.org/x/image/bmp
 golang.org/x/image/math/f64
@@ -160,7 +160,7 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.8.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.8.0
+# golang.org/x/text v0.11.0
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/internal/identifier
